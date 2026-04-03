@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "234611071510",
+    "project_id": "chem-manager",
+    "storage_bucket": "chem-manager.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:234611071510:android:2c33bcd2822ae7a7deb337",
+        "android_client_info": {
+          "package_name": "com.example.chem_manager"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHCgGQjo4C6kuNvk8h3m3GrGiWWf4vmnQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
