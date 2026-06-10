@@ -49,7 +49,7 @@ class _ConnectedUserDetailsPageState extends State<ConnectedUserDetailsPage> {
   bool _isLoadingStats = true;
 
   // For Appointment Days (Only for Organisation -> Doctor)
-  List<String> _selectedDays = [];
+  List<Map<String, dynamic>> _slots = [];
   bool _isLoadingDays = false;
   bool _isSavingDays = false;
 
@@ -118,9 +118,26 @@ class _ConnectedUserDetailsPageState extends State<ConnectedUserDetailsPage> {
         final appointmentDays =
             Map<String, dynamic>.from(orgData['appointmentDays'] ?? {});
         
+        final rawDays = appointmentDays[widget.userId];
+        List<Map<String, dynamic>> loadedSlots = [];
+        if (rawDays is List) {
+          for (var item in rawDays) {
+            if (item is Map) {
+              loadedSlots.add(Map<String, dynamic>.from(item));
+            } else if (item is String) {
+              loadedSlots.add({
+                'day': item,
+                'startTime': '09:00 AM',
+                'endTime': '05:00 PM',
+                'maxPatients': 20,
+              });
+            }
+          }
+        }
+        
         if (mounted) {
            setState(() {
-              _selectedDays = List<String>.from(appointmentDays[widget.userId] ?? []);
+              _slots = loadedSlots;
            });
         }
       }
@@ -141,19 +158,160 @@ class _ConnectedUserDetailsPageState extends State<ConnectedUserDetailsPage> {
       final response = await ApiService.patch('/users/appointment-days', {
          'userId': currentUserId,
          'doctorId': widget.userId,
-         'days': _selectedDays
+         'days': _slots
       });
 
       if (response.statusCode == 200) {
-        _showSuccessDialog('Days updated successfully');
+        _showSuccessDialog('Visiting schedule updated successfully');
       } else {
-        _showErrorDialog('Failed to update days');
+        _showErrorDialog('Failed to update visiting schedule');
       }
     } catch (e) {
-      _showErrorDialog('Error saving days: $e');
+      _showErrorDialog('Error saving visiting schedule: $e');
     } finally {
       if (mounted) setState(() => _isSavingDays = false);
     }
+  }
+
+  void _showAddSlotDialog() {
+    String selectedDay = 'Monday';
+    TimeOfDay startTime = const TimeOfDay(hour: 9, minute: 0);
+    TimeOfDay endTime = const TimeOfDay(hour: 17, minute: 0);
+    final maxPatientsController = TextEditingController(text: '15');
+
+    final daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return AlertDialog(
+            backgroundColor: _backgroundColor,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+            title: Text(
+              'Add Visiting Slot',
+              style: TextStyle(color: _textColor, fontWeight: FontWeight.bold),
+            ),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Select Day:', style: TextStyle(color: _textColor, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<String>(
+                    value: selectedDay,
+                    dropdownColor: _backgroundColor,
+                    style: TextStyle(color: _textColor, fontWeight: FontWeight.w600),
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    ),
+                    items: daysOfWeek.map((day) => DropdownMenuItem(value: day, child: Text(day))).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setDialogState(() => selectedDay = val);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  Text('Start Time:', style: TextStyle(color: _textColor, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showTimePicker(context: context, initialTime: startTime);
+                      if (picked != null) {
+                        setDialogState(() => startTime = picked);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade400),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(startTime.format(context), style: TextStyle(color: _textColor, fontSize: 16)),
+                          Icon(Icons.access_time, color: _primaryColor),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text('End Time:', style: TextStyle(color: _textColor, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  InkWell(
+                    onTap: () async {
+                      final picked = await showTimePicker(context: context, initialTime: endTime);
+                      if (picked != null) {
+                        setDialogState(() => endTime = picked);
+                      }
+                    },
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 15),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade400),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(endTime.format(context), style: TextStyle(color: _textColor, fontSize: 16)),
+                          Icon(Icons.access_time, color: _primaryColor),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text('Max Patients:', style: TextStyle(color: _textColor, fontWeight: FontWeight.w600)),
+                  const SizedBox(height: 8),
+                  TextField(
+                    controller: maxPatientsController,
+                    keyboardType: TextInputType.number,
+                    style: TextStyle(color: _textColor, fontSize: 16),
+                    decoration: InputDecoration(
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                      hintText: 'e.g. 15',
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: Text('Cancel', style: TextStyle(color: _textColor.withOpacity(0.7))),
+              ),
+              ElevatedButton(
+                onPressed: () {
+                  final patients = int.tryParse(maxPatientsController.text);
+                  if (patients == null || patients <= 0) {
+                    _showErrorDialog('Please enter a valid patient count');
+                    return;
+                  }
+                  
+                  // Add slot to list
+                  setState(() {
+                    _slots.add({
+                      'day': selectedDay,
+                      'startTime': startTime.format(context),
+                      'endTime': endTime.format(context),
+                      'maxPatients': patients,
+                    });
+                  });
+                  Navigator.pop(context);
+                },
+                style: ElevatedButton.styleFrom(backgroundColor: _primaryColor),
+                child: const Text('Add', style: TextStyle(color: Colors.white)),
+              ),
+            ],
+          );
+        },
+      ),
+    );
   }
 
   Future<void> _removeConnection() async {
@@ -286,8 +444,6 @@ class _ConnectedUserDetailsPageState extends State<ConnectedUserDetailsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final daysOfWeek = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
     return Scaffold(
       backgroundColor: _backgroundColor,
       appBar: AppBar(
@@ -374,57 +530,114 @@ class _ConnectedUserDetailsPageState extends State<ConnectedUserDetailsPage> {
 
             // Appointment Days (Conditional)
             if (_canSetAppointmentDays()) ...[
-                Align(alignment: Alignment.centerLeft, child: Text('Set Visiting Days', style: TextStyle(color: _textColor, fontSize: 18, fontWeight: FontWeight.bold))),
+                Align(alignment: Alignment.centerLeft, child: Text('Set Visiting Days & Slots', style: TextStyle(color: _textColor, fontSize: 18, fontWeight: FontWeight.bold))),
                 SizedBox(height: 15),
                 if (_isLoadingDays)
                    Center(child: CircularProgressIndicator(color: _primaryColor))
                 else
                    Column(
-                     children: [
-                        Wrap(
-                           spacing: 12,
-                           runSpacing: 12,
-                           children: daysOfWeek.map((day) {
-                              final isSelected = _selectedDays.contains(day);
-                              return GestureDetector(
-                                 onTap: () {
-                                    setState(() {
-                                       if (isSelected) {
-                                          _selectedDays.remove(day);
-                                       } else {
-                                          _selectedDays.add(day);
-                                       }
-                                    });
-                                 },
-                                 child: Container(
-                                     padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                                     decoration: BoxDecoration(
-                                        color: isSelected ? _primaryColor : _backgroundColor,
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: isSelected 
-                                            ? [] // Pressed effect could be inset, but standard neumorphic often removes shadow or inverts
-                                            : [_darkShadow, _lightShadow]
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                         if (_slots.isEmpty)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 20),
+                              child: Center(
+                                child: Text(
+                                  'No visiting slots configured yet.',
+                                  style: TextStyle(color: _textColor.withOpacity(0.6), fontSize: 15, fontStyle: FontStyle.italic),
+                                ),
+                              ),
+                            )
+                         else
+                            ListView.builder(
+                               shrinkWrap: true,
+                               physics: NeverScrollableScrollPhysics(),
+                               itemCount: _slots.length,
+                               itemBuilder: (context, index) {
+                                  final slot = _slots[index];
+                                  return Padding(
+                                     padding: const EdgeInsets.only(bottom: 12),
+                                     child: _buildNeumorphicContainer(
+                                        Padding(
+                                           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                           child: Row(
+                                              children: [
+                                                 Icon(Icons.calendar_month_rounded, color: _primaryColor),
+                                                 const SizedBox(width: 15),
+                                                 Expanded(
+                                                    child: Column(
+                                                       crossAxisAlignment: CrossAxisAlignment.start,
+                                                       children: [
+                                                          Text(
+                                                             slot['day'] ?? 'Unknown Day',
+                                                             style: TextStyle(color: _textColor, fontWeight: FontWeight.bold, fontSize: 16),
+                                                          ),
+                                                          const SizedBox(height: 4),
+                                                          Row(
+                                                             children: [
+                                                                Icon(Icons.access_time_rounded, color: _textColor.withOpacity(0.6), size: 14),
+                                                                const SizedBox(width: 5),
+                                                                Text(
+                                                                   '${slot['startTime'] ?? 'N/A'} - ${slot['endTime'] ?? 'N/A'}',
+                                                                   style: TextStyle(color: _textColor.withOpacity(0.8), fontSize: 13),
+                                                                ),
+                                                                const SizedBox(width: 15),
+                                                                Icon(Icons.people_alt_rounded, color: _textColor.withOpacity(0.6), size: 14),
+                                                                const SizedBox(width: 5),
+                                                                Text(
+                                                                   'Max: ${slot['maxPatients'] ?? 'N/A'}',
+                                                                   style: TextStyle(color: _textColor.withOpacity(0.8), fontSize: 13),
+                                                                ),
+                                                             ],
+                                                          )
+                                                       ],
+                                                    ),
+                                                 ),
+                                                 IconButton(
+                                                    icon: Icon(Icons.delete_rounded, color: Colors.red.shade400),
+                                                    onPressed: () {
+                                                       setState(() {
+                                                          _slots.removeAt(index);
+                                                       });
+                                                    },
+                                                 )
+                                              ],
+                                           ),
+                                        ),
                                      ),
-                                     child: Text(
-                                         day, 
-                                         style: TextStyle(
-                                            color: isSelected ? Colors.white : _textColor,
-                                            fontWeight: FontWeight.bold
-                                         )
-                                     ),
-                                 ),
-                              );
-                           }).toList(),
-                        ),
-                        SizedBox(height: 20),
-                        _buildNeumorphicButton(
-                           onPressed: _saveAppointmentDays,
-                           child: _isSavingDays 
-                              ? SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: _primaryColor, strokeWidth: 2))
-                              : Text('Update Days', style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold, fontSize: 16))
-                        )
-                     ],
-                   ),
+                                  );
+                               },
+                            ),
+                         const SizedBox(height: 15),
+                         Row(
+                           children: [
+                             Expanded(
+                               child: _buildNeumorphicButton(
+                                  onPressed: _showAddSlotDialog,
+                                  child: Row(
+                                     mainAxisAlignment: MainAxisAlignment.center,
+                                     children: [
+                                        Icon(Icons.add_rounded, color: _primaryColor),
+                                        const SizedBox(width: 8),
+                                        Text('Add Slot', style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold, fontSize: 16))
+                                     ],
+                                  )
+                               ),
+                             ),
+                             const SizedBox(width: 15),
+                             Expanded(
+                               child: _buildNeumorphicButton(
+                                  onPressed: _saveAppointmentDays,
+                                  color: _primaryColor,
+                                  child: _isSavingDays 
+                                      ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
+                                      : const Text('Save Schedule', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16))
+                               ),
+                             ),
+                           ],
+                         ),
+                      ],
+                    ),
                 SizedBox(height: 30),
             ],
 

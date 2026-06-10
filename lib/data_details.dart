@@ -10,6 +10,8 @@ import 'package:chem_manager/controllers/auth_controller.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'dart:io';
+import 'package:chem_manager/add_patient_page.dart';
+import 'package:chem_manager/patient_details_page.dart';
 
 class DataDetailsPage extends StatefulWidget {
   final String userName;
@@ -181,9 +183,7 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
                   final orgData = orgSnapshot.data ?? {};
                   final appointmentDaysMap = Map<String, dynamic>.from(orgData['appointmentDays'] ?? {});
                   // Days for this specific doctor (widget.userId)
-                  final availableDays = (appointmentDaysMap[widget.userId] as List<dynamic>? ?? [])
-                          .map((day) => _dayStringToInt(day.toString()))
-                          .toList();
+                  final availableDays = _getAvailableDaysList(appointmentDaysMap[widget.userId]);
 
                   return _buildPatientList(patients, availableDays);
                 },
@@ -241,9 +241,7 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
                   final orgData = orgSnapshot.data ?? {};
                   final appointmentDaysMap = Map<String, dynamic>.from(orgData['appointmentDays'] ?? {});
                   // Days for ME (_currentUserId) set by Org (widget.userId)
-                  final availableDays = (appointmentDaysMap[_currentUserId] as List<dynamic>? ?? [])
-                      .map((day) => _dayStringToInt(day.toString()))
-                      .toList();
+                  final availableDays = _getAvailableDaysList(appointmentDaysMap[_currentUserId]);
 
                   return _buildPatientList(patients, availableDays);
                 },
@@ -264,12 +262,77 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
       try {
         final response = await ApiService.get(query);
         if (response.statusCode == 200) {
-           return jsonDecode(response.body);
+           final List<dynamic> list = jsonDecode(response.body);
+           // Sort patients chronologically by appointmentDate, then by slot time
+           list.sort((a, b) {
+              DateTime? aDate;
+              DateTime? bDate;
+              try {
+                if (a['appointmentDate'] != null) aDate = DateTime.parse(a['appointmentDate']).toLocal();
+              } catch (_) {}
+              try {
+                if (b['appointmentDate'] != null) bDate = DateTime.parse(b['appointmentDate']).toLocal();
+              } catch (_) {}
+              
+              if (aDate != null && bDate != null) {
+                if (!aDate.isAtSameMomentAs(bDate)) {
+                  return aDate.compareTo(bDate);
+                }
+              } else if (aDate != null) {
+                return -1;
+              } else if (bDate != null) {
+                return 1;
+              }
+
+              // Same date, sort by slot start time
+              final aTimeStr = a['appointmentTime']?.toString() ?? '';
+              final bTimeStr = b['appointmentTime']?.toString() ?? '';
+              return _compareSlotTimes(aTimeStr, bTimeStr);
+           });
+           return list;
         }
       } catch (e) {
         print('Error fetching patients: $e');
       }
       return [];
+  }
+
+  int _slotTimeToMinutes(String slotTime) {
+    if (slotTime.isEmpty) return 0;
+    try {
+      final parts = slotTime.split('-');
+      if (parts.isEmpty) return 0;
+      final startTimeStr = parts[0].trim(); // e.g. "04:00 PM"
+      
+      DateTime? parsedTime;
+      final formats = [
+        DateFormat('hh:mm a'),
+        DateFormat('h:mm a'),
+        DateFormat('HH:mm'),
+        DateFormat('H:mm'),
+      ];
+      for (var format in formats) {
+        try {
+          parsedTime = format.parse(startTimeStr);
+          break;
+        } catch (_) {}
+      }
+      if (parsedTime == null) {
+        try {
+          parsedTime = DateFormat.jm().parse(startTimeStr);
+        } catch (_) {}
+      }
+      if (parsedTime != null) {
+        return parsedTime.hour * 60 + parsedTime.minute;
+      }
+    } catch (e) {
+      print('Error converting slot to minutes: $e');
+    }
+    return 0;
+  }
+
+  int _compareSlotTimes(String timeA, String timeB) {
+    return _slotTimeToMinutes(timeA).compareTo(_slotTimeToMinutes(timeB));
   }
 
   Future<Map<String, dynamic>> _fetchUserProfile(String userId) async {
@@ -382,7 +445,18 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
     int serialNumber,
     DateTime registeredDate,
   ) {
-    final dateFormat = DateFormat('dd-MMM-yyyy hh:mm a');
+    String appointmentStr = '';
+    if (patient['appointmentDate'] != null) {
+      try {
+        final parsedAppDate = DateTime.parse(patient['appointmentDate']).toLocal();
+        appointmentStr = DateFormat('dd-MMM-yyyy').format(parsedAppDate);
+      } catch (e) {
+        appointmentStr = patient['appointmentDate'].toString();
+      }
+    }
+    final String slotTime = patient['appointmentTime'] ?? '';
+    final String displayTime = slotTime.isNotEmpty ? '$appointmentStr\n$slotTime' : appointmentStr;
+
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8.0, horizontal: 16.0),
       child: Container(
@@ -423,7 +497,7 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        dateFormat.format(registeredDate),
+                        displayTime,
                         style: TextStyle(
                           fontSize: 12,
                           color: _textColor.withOpacity(0.7),
@@ -467,100 +541,24 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
     );
   }
 
-  void _showPatientDetails(BuildContext context, Map<String, dynamic> patient) {
-    final bool isDoctor = _currentUserCategory == 'Doctor';
-    final bool isPending = patient['status'] == 'pending';
-    // Backend returns ISO string for appointmentDate
-    final appointmentDate = DateTime.parse(patient['appointmentDate']);
-    final today = DateTime.now();
-    final isTodayAppointment = appointmentDate.year == today.year &&
-        appointmentDate.month == today.month &&
-        appointmentDate.day == today.day;
+  void _showPatientDetails(BuildContext context, Map<String, dynamic> patient) async {
+    if (_currentUserCategory == null || _currentUserId == null) return;
     
-    // Use createdAt for registered date display
-    final registeredDate = DateTime.parse(patient['createdAt']);
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: _backgroundColor,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Center(
-          child: Text(patient['name'],
-              style: TextStyle(color: Colors.purple[400], fontSize: 24)),
-        ),
-        content: SingleChildScrollView(
-          child: Padding(
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildDetailItem('Age', patient['age'].toString()),
-                _buildDetailItem('Gender', patient['gender']),
-                if (_currentUserCategory == 'Organisation')
-                  _buildEditableDetailItem(
-                    context,
-                    'Weight',
-                    patient['weight'] ?? '',
-                    patient['_id'],
-                    'weight',
-                  ),
-                if (_currentUserCategory == 'Organisation')
-                  _buildEditableBPFields(
-                    context,
-                    patient['bp'] ?? '',
-                    patient['_id'],
-                  ),
-                _buildDetailItem('Phone', patient['phone']),
-                _buildDetailItem(
-                    'Registered',
-                    DateFormat('dd-MMM-yyyy hh:mm a')
-                        .format(registeredDate)),
-                _buildDetailItem(
-                    'Status', patient['status'].toString().toUpperCase()),
-                if (isDoctor && isPending && isTodayAppointment)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 20),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: _buildActionButton(
-                              'Not Visited', Icons.close, Colors.red, () {
-                            _updatePatientStatus(patient['_id'], 'not_visited');
-                            Navigator.pop(context);
-                          }),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: _buildActionButton(
-                              'Mark Visited', Icons.check, Colors.green, () {
-                            _updatePatientStatus(patient['_id'], 'visited');
-                            Navigator.pop(context);
-                          }),
-                        ),
-                      ],
-                    ),
-                  ),
-                const SizedBox(height: 20),
-                SizedBox(
-                  width: double.infinity,
-                  child: _buildActionButton(
-                    'Share Report via WhatsApp',
-                    Icons.share,
-                    Colors.green,
-                    () {
-                      // Navigator.pop(context); // Keep dialog open
-                      _downloadAndShareReport(patient['_id'], patient['name'], patient['phone']);
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PatientDetailsPage(
+          patient: patient,
+          isDarkMode: isDarkMode,
+          currentUserCategory: _currentUserCategory!,
+          currentUserId: _currentUserId!,
         ),
       ),
     );
+
+    if (mounted) {
+      setState(() {}); // Refresh list
+    }
   }
   
   Future<void> _updatePatientStatus(String patientId, String status) async {
@@ -575,6 +573,56 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
       } catch(e) {
          print('Error updating status: $e');
       }
+  }
+
+  bool _isSlotTimeArrived(String? slotTime) {
+    if (slotTime == null || slotTime.isEmpty) {
+      return true; // If no slot specified, default to arrived
+    }
+    
+    try {
+      // Split to get start time, e.g., "04:00 PM" from "04:00 PM - 05:00 PM"
+      final parts = slotTime.split('-');
+      if (parts.isEmpty) return true;
+      final startTimeStr = parts[0].trim(); // e.g. "04:00 PM" or "4:00 PM"
+      
+      // Parse time
+      DateTime? parsedTime;
+      final formats = [
+        DateFormat('hh:mm a'),
+        DateFormat('h:mm a'),
+        DateFormat('HH:mm'),
+        DateFormat('H:mm'),
+      ];
+      
+      for (var format in formats) {
+        try {
+          parsedTime = format.parse(startTimeStr);
+          break;
+        } catch (_) {}
+      }
+      
+      if (parsedTime == null) {
+        // Try parsing with DateFormat.jm()
+        try {
+          parsedTime = DateFormat.jm().parse(startTimeStr);
+        } catch (_) {}
+      }
+      
+      if (parsedTime == null) return true; // Fallback to true if parsing fails
+      
+      final now = DateTime.now();
+      // Compare hour and minute
+      if (now.hour > parsedTime.hour) {
+        return true;
+      } else if (now.hour == parsedTime.hour) {
+        return now.minute >= parsedTime.minute;
+      }
+      return false;
+    } catch (e) {
+      print('Error checking if slot time arrived: $e');
+      return true; // Fallback
+    }
   }
 
   Widget _buildActionButton(
@@ -832,175 +880,34 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
   }
 
   void _showPatientForm(BuildContext context) async {
-    final nameController = TextEditingController();
-    final ageController = TextEditingController();
-    String? gender;
-    final weightController = TextEditingController();
-    final bp1Controller = TextEditingController();
-    final bp2Controller = TextEditingController();
-    final phoneController = TextEditingController();
-    final dateController = TextEditingController();
-    List<int> availableDays = [];
-
-    // Get available days via API
-    try {
-      final userProfile = await _fetchUserProfile(_currentUserId!); // Fetch MY profile (Org)
-      final appointmentDays = Map<String, dynamic>.from(userProfile['appointmentDays'] ?? {});
-      availableDays = (appointmentDays[widget.userId] as List<dynamic>? ?? [])
-          .map((day) => _dayStringToInt(day.toString()))
-          .toList();
-    } catch (e) {
-      print('Error fetching days: $e');
-    }
-
-    if (availableDays.isEmpty) {
-      if(mounted) _showErrorDialog(context, 'No visiting days set for this doctor');
-      return;
-    }
+    if (_currentUserId == null) return;
     
-    if(!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) => Dialog(
-        backgroundColor: _backgroundColor,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-        ),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 0.8,
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [_darkShadow, _lightShadow],
-            ),
-            child: SingleChildScrollView(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Add Patient',
-                      style: TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: _primaryColor,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    _buildNeumorphicTextField(nameController, 'Name'),
-                    const SizedBox(height: 15),
-                    _buildNeumorphicTextField(ageController, 'Age',
-                        keyboardType: TextInputType.number),
-                    const SizedBox(height: 15),
-                    _buildGenderDropdown(gender, (value) => gender = value!),
-                    const SizedBox(height: 15),
-                    _buildNeumorphicTextField(weightController, 'Weight'),
-                    const SizedBox(height: 15),
-                    _buildBPFields(bp1Controller, bp2Controller),
-                    const SizedBox(height: 15),
-                    _buildNeumorphicTextField(phoneController, 'Phone',
-                        keyboardType: TextInputType.phone),
-                    const SizedBox(height: 15),
-                    _buildDateField(dateController, availableDays),
-                    const SizedBox(height: 25),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildActionButton('Cancel', Icons.close,
-                              Colors.red, () => Navigator.pop(context)),
-                        ),
-                        const SizedBox(width: 15),
-                        Expanded(
-                          child: _buildActionButton(
-                              'Save', Icons.check, Colors.green, () async {
-                            if (nameController.text.isEmpty ||
-                                ageController.text.isEmpty ||
-                                dateController.text.isEmpty ||
-                                gender == null) {
-                              _showErrorDialog(
-                                  context, 'Please fill all required fields');
-                              return;
-                            }
-                            
-                            // Parse Date: "dd/MM/yyyy" -> DateTime
-                            // Or however _buildDateField formats it.
-                            // Assuming _buildDateField uses DateFormat('dd/MM/yyyy') or similar.
-                            // Let's assume standard ISO format for API or explicit Date object.
-                            // Backend expects Date object (which Express parses from ISO string).
-                            
-                            try {
-                                // Parse date from controller (dd-MMM-yyyy) to ISO
-                                DateFormat inputFormat = DateFormat('dd-MMM-yyyy');
-                                DateTime date = inputFormat.parse(dateController.text);
-                                
-                                final patientData = {
-                                  'orgId': _currentUserId,
-                                  'doctorId': widget.userId,
-                                  'name': nameController.text,
-                                  'age': int.parse(ageController.text),
-                                  'gender': gender,
-                                  'weight': weightController.text,
-                                  'bp': '${bp1Controller.text}/${bp2Controller.text}',
-                                  'phone': phoneController.text,
-                                  'appointmentDate': date.toIso8601String(),
-                                };
-
-                                final response = await ApiService.post('/patients', patientData);
-                                
-                                if (response.statusCode == 201) {
-                                   Navigator.pop(context); // Close form
-                                   
-                                   final newPatient = jsonDecode(response.body);
-                                   
-                                   // Show success & share dialog
-                                   showDialog(
-                                       context: context,
-                                       builder: (context) => AlertDialog(
-                                           backgroundColor: _backgroundColor,
-                                           title: Text('Patient Added', style: TextStyle(color: _primaryColor)),
-                                           content: Text('Patient created successfully with ID: ${newPatient['patientId']}\nWould you like to share the report?', style: TextStyle(color: _textColor)),
-                                           actions: [
-                                               TextButton(
-                                                   onPressed: () => Navigator.pop(context),
-                                                   child: Text('Done', style: TextStyle(color: _textColor))
-                                               ),
-                                               ElevatedButton.icon(
-                                                   icon: Icon(Icons.share, color: Colors.white),
-                                                   label: Text('Share via Whatsapp', style: TextStyle(color: Colors.white)),
-                                                   style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
-                                                   onPressed: () {
-                                                       Navigator.pop(context);
-                                                       _downloadAndShareReport(newPatient['_id'], newPatient['name'], newPatient['phone']);
-                                                   },
-                                               )
-                                           ],
-                                       )
-                                   );
-
-                                   if (mounted) setState(() {}); // Refresh list
-                                } else {
-                                   _showErrorDialog(context, 'Failed to add patient');
-                                }
-                            } catch (e) {
-                                print(e);
-                                _showErrorDialog(context, 'Error adding patient: $e');
-                            }
-                          }),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddPatientPage(
+          doctorId: widget.userId,
+          doctorName: widget.userName,
+          orgId: _currentUserId!,
+          isDarkMode: isDarkMode,
         ),
       ),
     );
+
+    if (result != null) {
+      if (mounted) {
+        setState(() {}); // Refresh list
+      }
+      
+      if (result is Map && result['share'] == true) {
+        final patientName = result['patientName'];
+        final patientId = result['patientId'];
+        final patientPhone = result['patientPhone'];
+        if (patientId != null && patientName != null && patientPhone != null) {
+          _downloadAndShareReport(patientId, patientName, patientPhone);
+        }
+      }
+    }
   }
 
 
@@ -1140,6 +1047,28 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
     return days[day] ?? 1;
   }
 
+  List<int> _getAvailableDaysList(dynamic rawDays) {
+    if (rawDays == null) return [];
+    List<int> list = [];
+    if (rawDays is List) {
+      for (var item in rawDays) {
+        String? dayStr;
+        if (item is Map) {
+          dayStr = item['day']?.toString();
+        } else if (item is String) {
+          dayStr = item;
+        }
+        if (dayStr != null) {
+          int val = _dayStringToInt(dayStr);
+          if (!list.contains(val)) {
+            list.add(val);
+          }
+        }
+      }
+    }
+    return list;
+  }
+
   DateTime _findNextValidDate(List<int> availableDays) {
     final today = DateTime.now();
     final todayDateOnly = DateTime(today.year, today.month, today.day);
@@ -1173,14 +1102,14 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
   }
 
   Widget _buildDateField(
-      TextEditingController controller, List<int> availableDays) {
+      TextEditingController controller, List<int> availableDays, {VoidCallback? onDateSelected}) {
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(15),
         boxShadow: [_darkShadow, _lightShadow],
       ),
       child: InkWell(
-        onTap: () => _selectDate(context, controller, availableDays),
+        onTap: () => _selectDate(context, controller, availableDays, onDateSelected: onDateSelected),
         borderRadius: BorderRadius.circular(15),
         child: IgnorePointer(
           child: TextFormField(
@@ -1205,7 +1134,7 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
   }
 
   Future<void> _selectDate(BuildContext context,
-      TextEditingController controller, List<int> availableDays) async {
+      TextEditingController controller, List<int> availableDays, {VoidCallback? onDateSelected}) async {
     final DateTime initialDate = _findNextValidDate(availableDays);
 
     final DateTime? picked = await showDatePicker(
@@ -1238,6 +1167,9 @@ class _DataDetailsPageState extends State<DataDetailsPage> {
 
     if (picked != null) {
       controller.text = DateFormat('dd-MMM-yyyy').format(picked);
+      if (onDateSelected != null) {
+        onDateSelected();
+      }
     }
   }
 

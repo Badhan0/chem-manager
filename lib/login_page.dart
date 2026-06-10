@@ -8,6 +8,7 @@ import 'profile_page.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -307,15 +308,30 @@ class _LoginPageState extends State<LoginPage> {
                   icon: Icons.lock_outline,
                   isPassword: true,
                 ),
-        
-                SizedBox(height: 40),
-        
-                // "Biometric" Replacement -> Google Sign In
-                _buildGoogleButton(context),
-        
-                SizedBox(height: 40),
-        
-                // Main Button
+
+                // Forgot Password — right below password field
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    onPressed: () => _showResetPasswordDialog(context),
+                    child: Text(
+                      'Forgot Password?',
+                      style: TextStyle(
+                        color: _primaryAccent,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                        letterSpacing: 0.3,
+                      ),
+                    ),
+                  ),
+                ),
+
+                SizedBox(height: 30),
                 _buildMainButton(
                   text: 'Authorize',
                   onPressed: () async {
@@ -334,23 +350,11 @@ class _LoginPageState extends State<LoginPage> {
                     }
                   },
                 ),
-        
                 SizedBox(height: 30),
-        
-                // Forgot Password
-                TextButton(
-                  onPressed: () => _showResetPasswordDialog(context),
-                  child: Text(
-                    'RESET CREDENTIALS',
-                    style: TextStyle(
-                      color: _labelColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                      letterSpacing: 1.0,
-                    ),
-                  ),
-                ),
-        
+
+                // Google Sign In
+                _buildGoogleButton(context),
+
                 SizedBox(height: 10),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -492,84 +496,12 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _showResetPasswordDialog(BuildContext context) {
-    final emailController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          child: Container(
-            decoration: BoxDecoration(
-              color: _backgroundColor,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [_darkShadow, _lightShadow],
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Reset Password',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: _primaryAccent,
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  _buildInsetField(
-                    controller: emailController,
-                    label: 'Registered Email',
-                    icon: Icons.email,
-                  ),
-                  const SizedBox(height: 25),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: [
-                      // Using TextButton instead of _buildNeumorphicButton to fit new style
-                      TextButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: Text(
-                          'Cancel',
-                          style: TextStyle(
-                            color: _primaryAccent,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          try {
-                            await FirebaseAuth.instance.sendPasswordResetEmail(
-                                email: emailController.text.trim());
-                            Navigator.pop(context);
-                            _showSuccessDialog(context,
-                                'Password reset email sent. Check your inbox.');
-                          } on FirebaseAuthException catch (e) {
-                            Navigator.pop(context);
-                            _showErrorDialog(context,
-                                'Failed to send reset email: ${e.message}');
-                          }
-                        },
-                        child: Text(
-                          'Reset',
-                          style: TextStyle(
-                            color: _primaryAccent,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (context) => const ForgotPasswordPage()),
     );
   }
+
 
   void _showAboutDialog(BuildContext context) {
     showDialog(

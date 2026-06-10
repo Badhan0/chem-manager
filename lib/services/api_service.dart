@@ -4,7 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Use 10.0.2.2 for Android Emulator, localhost for iOS simulator
-  static const String baseUrl = 'http://192.168.1.18:5000/api';
+  //static const String baseUrl = 'http://192.168.0.131:5000/api';
+  static const String baseUrl = 'https://chem-manager-backend-zxlh.onrender.com/api';
 
   static Future<http.Response> post(String endpoint, Map<String, dynamic> body) async {
     final url = Uri.parse('$baseUrl$endpoint');
@@ -119,5 +120,21 @@ class ApiService {
     );
     print('DELETE Response (${response.statusCode}): ${response.body}');
     return response;
+  }
+
+  static Future<http.Response> forgotPassword(String email) async {
+    return await post('/users/forgot-password', {'email': email});
+  }
+
+  static Future<http.Response> verifyResetOtp(String email, String otp) async {
+    return await post('/users/verify-reset-otp', {'email': email, 'otp': otp});
+  }
+
+  static Future<http.Response> resetPassword(String email, String resetToken, String newPassword) async {
+    return await post('/users/reset-password', {
+      'email': email,
+      'resetToken': resetToken,
+      'newPassword': newPassword,
+    });
   }
 }

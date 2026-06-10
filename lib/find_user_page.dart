@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'package:chem_manager/controllers/auth_controller.dart';
 import 'package:chem_manager/services/api_service.dart';
 import 'dart:convert';
@@ -49,17 +48,11 @@ class _FindUserPageState extends State<FindUserPage> {
   }
 
   Future<void> _initializeUserCategory() async {
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
-    DocumentSnapshot userDoc = await FirebaseFirestore.instance
-        .collection('users')
-        .doc(user.uid)
-        .get();
+    final prefs = await SharedPreferences.getInstance();
+    final userCategory = prefs.getString('category') ?? '';
 
     if (mounted) {
       setState(() {
-         String userCategory = userDoc['category'];
          _isDoctor = userCategory == 'Doctor';
          _searchLabel = _isDoctor ? 'Enter Organisation GSTIN' : 'Enter Doctor Auth No';
       });
@@ -151,11 +144,14 @@ class _FindUserPageState extends State<FindUserPage> {
             'receiverId': receiverId,
         });
 
-        if (apiResponse.statusCode == 200) {
+        if (apiResponse.statusCode == 200 || apiResponse.statusCode == 201) {
             _showSuccessDialog('Connection request sent successfully!');
             setState(() {
-                _searchResult = null;
-                _searchController.clear();
+                if (_searchResult != null) {
+                    final updatedMap = Map<String, dynamic>.from(_searchResult!);
+                    updatedMap['connectionStatus'] = 'pending';
+                    _searchResult = updatedMap;
+                }
             });
         } else {
             final error = jsonDecode(apiResponse.body);
@@ -404,17 +400,46 @@ class _FindUserPageState extends State<FindUserPage> {
                                         )
                                     ),
                                     SizedBox(height: 30),
-                                    _buildNeumorphicButton(
-                                        onPressed: () => _sendConnectionRequest(_searchResult!['_id']),
-                                        child: Row(
-                                            mainAxisAlignment: MainAxisAlignment.center,
-                                            children: [
-                                                Icon(Icons.send_rounded, color: _primaryColor),
-                                                SizedBox(width: 10),
-                                                Text('SEND REQUEST', style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold))
-                                            ],
-                                        )
-                                    )
+                                    if (_searchResult!['connectionStatus'] == 'connected')
+                                         Container(
+                                             padding: const EdgeInsets.symmetric(vertical: 12),
+                                             width: double.infinity,
+                                             alignment: Alignment.center,
+                                             child: Row(
+                                                 mainAxisAlignment: MainAxisAlignment.center,
+                                                 children: [
+                                                     Icon(Icons.check_circle_rounded, color: Colors.green),
+                                                     SizedBox(width: 10),
+                                                     Text('ALREADY CONNECTED', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                                                 ],
+                                             )
+                                         )
+                                    else if (_searchResult!['connectionStatus'] == 'pending')
+                                         Container(
+                                             padding: const EdgeInsets.symmetric(vertical: 12),
+                                             width: double.infinity,
+                                             alignment: Alignment.center,
+                                             child: Row(
+                                                 mainAxisAlignment: MainAxisAlignment.center,
+                                                 children: [
+                                                     Icon(Icons.hourglass_empty_rounded, color: _primaryColor),
+                                                     SizedBox(width: 10),
+                                                     Text('ALREADY CONNECTION IS SENT', style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+                                                 ],
+                                             )
+                                         )
+                                    else
+                                         _buildNeumorphicButton(
+                                             onPressed: () => _sendConnectionRequest(_searchResult!['_id']),
+                                             child: Row(
+                                                 mainAxisAlignment: MainAxisAlignment.center,
+                                                 children: [
+                                                     Icon(Icons.send_rounded, color: _primaryColor),
+                                                     SizedBox(width: 10),
+                                                     Text('SEND REQUEST', style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold))
+                                                 ],
+                                             )
+                                         )
                                 ],
                             ),
                         )

@@ -227,4 +227,47 @@ class AuthController {
     final prefs = await SharedPreferences.getInstance();
     await prefs.clear();
   }
+
+  Future<Map<String, dynamic>> forgotPassword(String email) async {
+    try {
+      final response = await ApiService.forgotPassword(email);
+      final data = jsonDecode(response.body);
+      return {
+        'success': response.statusCode == 200 && (data['success'] == true),
+        'message': data['message'] ?? 'Failed to send OTP',
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> verifyResetOtp(String email, String otp) async {
+    try {
+      final response = await ApiService.verifyResetOtp(email, otp);
+      final data = jsonDecode(response.body);
+      if (response.statusCode == 200 && data['success'] == true) {
+        return {
+          'success': true,
+          'message': data['message'],
+          'resetToken': data['resetToken'],
+        };
+      }
+      return {'success': false, 'message': data['message'] ?? 'Invalid OTP'};
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
+
+  Future<Map<String, dynamic>> resetPassword(String email, String resetToken, String newPassword) async {
+    try {
+      final response = await ApiService.resetPassword(email, resetToken, newPassword);
+      final data = jsonDecode(response.body);
+      return {
+        'success': response.statusCode == 200 && (data['success'] == true),
+        'message': data['message'] ?? 'Failed to reset password',
+      };
+    } catch (e) {
+      return {'success': false, 'message': 'Network error: $e'};
+    }
+  }
 }

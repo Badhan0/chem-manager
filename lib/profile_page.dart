@@ -180,13 +180,19 @@ class _ProfilePageState extends State<ProfilePage> {
         ? _specializationController.text.isNotEmpty 
         : true;
 
+    bool isLocationValid = _isLocationConfirmed || 
+        (!_isLocationAlreadySet && 
+         _streetController.text.isNotEmpty && 
+         _areaController.text.isNotEmpty && 
+         _districtController.text.isNotEmpty);
+
     setState(() {
       _isButtonActive = _nameController.text.isNotEmpty &&
           isValidAadhar &&
           _selectedCategory != null &&
           isValidProfessionalId &&
           isValidSpecialization &&
-          _isLocationConfirmed;
+          isLocationValid;
           
       // Ensure if we are already completed, the button is at least enabled if settings are valid
       if (_profileCompleted && _nameController.text.isNotEmpty) {
@@ -233,8 +239,19 @@ class _ProfilePageState extends State<ProfilePage> {
         ? _doctorAuthNumberController.text
         : _gstinNumberController.text;
 
+    String fullAddress = _locationController.text;
+    if (fullAddress.isEmpty) {
+      fullAddress = [
+        if (_landmarkController.text.isNotEmpty) _landmarkController.text,
+        if (_streetController.text.isNotEmpty) _streetController.text,
+        if (_areaController.text.isNotEmpty) _areaController.text,
+        if (_blockController.text.isNotEmpty) 'Block: ${_blockController.text}',
+        if (_districtController.text.isNotEmpty) _districtController.text,
+      ].join(', ');
+    }
+
     final Map<String, dynamic> finalLocationDetails = {
-      'fullAddress': _locationController.text,
+      'fullAddress': fullAddress,
       'landmark': _landmarkController.text,
       'street': _streetController.text,
       'area': _areaController.text,
@@ -267,6 +284,7 @@ class _ProfilePageState extends State<ProfilePage> {
          _profileCompleted = true;
          _uniqueId = professionalId;
          _isLocationAlreadySet = true;
+         _isLocationConfirmed = true;
        });
        await _showSuccessDialog(context, 'Profile updated successfully!');
        if (mounted) {

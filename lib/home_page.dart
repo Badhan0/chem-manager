@@ -112,8 +112,36 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
+  String _photoUrl = '';
+  String _initialLetter = '';
+  late Future<bool> _profileCompleteFuture;
 
+  @override
+  void initState() {
+    super.initState();
+    _profileCompleteFuture = _isProfileComplete();
+    _loadLocalUserData();
+  }
 
+  Future<void> _loadLocalUserData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString('email') ?? '';
+    final photo = prefs.getString('photo_url') ?? '';
+    if (mounted) {
+      setState(() {
+        _initialLetter = email.isNotEmpty ? email[0].toUpperCase() : '';
+        _photoUrl = photo;
+      });
+    }
+  }
+
+  void _refreshProfile() {
+    if (mounted) {
+      setState(() {
+        _profileCompleteFuture = _isProfileComplete();
+      });
+    }
+  }
 
   void _showProfileDialog(BuildContext context) async {
     final AuthController authController = AuthController();
@@ -124,6 +152,7 @@ class _HomePageState extends State<HomePage> {
       String displayName = data['name'] ?? 'User';
       String email = data['email'] ?? '';
       String initialLetter = email.isNotEmpty ? email[0].toUpperCase() : '';
+      bool isOrganisation = (data['category'] ?? '') == 'Organisation';
       
       // Get photoURL from Database/Backend first, fallback to FirebaseAuth
       String photoUrl = data['photoURL'] ?? FirebaseAuth.instance.currentUser?.photoURL ?? '';
@@ -176,26 +205,28 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
               const SizedBox(height: 10),
-              _buildNeumorphicButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const PaymentGatewaySetupPage()),
-                  );
-                },
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.payment_rounded,
-                        color: HomePage.primaryColor, size: 20),
-                    const SizedBox(width: 8),
-                    const Text('Manage payment option'),
-                  ],
+              if (isOrganisation) ...[
+                _buildNeumorphicButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                          builder: (context) => const PaymentGatewaySetupPage()),
+                    );
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.payment_rounded,
+                          color: HomePage.primaryColor, size: 20),
+                      const SizedBox(width: 8),
+                      const Text('Manage payment option'),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 12),
+                const SizedBox(height: 12),
+              ],
               _buildNeumorphicButton(
                 onPressed: () async {
                   Navigator.of(context).pop();
@@ -203,9 +234,7 @@ class _HomePageState extends State<HomePage> {
                     context,
                     MaterialPageRoute(builder: (context) => const ProfilePage()),
                   );
-                  if (mounted) {
-                    setState(() {});
-                  }
+                  _refreshProfile();
                 },
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -214,6 +243,22 @@ class _HomePageState extends State<HomePage> {
                         color: HomePage.primaryColor, size: 20),
                     const SizedBox(width: 8),
                     const Text('Edit Profile'),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildNeumorphicButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _logout(context);
+                },
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.logout_rounded,
+                        color: Colors.red.shade600, size: 20),
+                    const SizedBox(width: 8),
+                    Text('Logout', style: TextStyle(color: Colors.red.shade600, fontWeight: FontWeight.bold)),
                   ],
                 ),
               ),
@@ -234,7 +279,7 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: const [],
           maxWidth: MediaQuery.of(context).size.width * 0.9,
-          maxHeight: MediaQuery.of(context).size.height * 0.45, // Reduced height significantly
+          maxHeight: MediaQuery.of(context).size.height * (isOrganisation ? 0.52 : 0.44),
         ),
       );
     }
@@ -419,9 +464,6 @@ class _HomePageState extends State<HomePage> {
 
 
   void _showFindUserDialog(BuildContext context) async {
-    User? user = FirebaseAuth.instance.currentUser;
-    if (user == null) return;
-
     // Check if profile is complete before allowing search
     bool isComplete = await _isProfileComplete();
     if (!isComplete) {
@@ -1175,12 +1217,13 @@ class _HomePageState extends State<HomePage> {
   @override
   Widget build(BuildContext context) {
     User? user = FirebaseAuth.instance.currentUser;
-    String photoUrl = user?.photoURL ?? '';
-    String initialLetter =
-        user?.email?.isNotEmpty ?? false ? user!.email![0].toUpperCase() : '';
+    String photoUrl = _photoUrl.isNotEmpty ? _photoUrl : (user?.photoURL ?? '');
+    String initialLetter = _initialLetter.isNotEmpty
+        ? _initialLetter
+        : (user?.email?.isNotEmpty ?? false ? user!.email![0].toUpperCase() : '');
 
     return FutureBuilder<bool>(
-      future: _isProfileComplete(),
+      future: _profileCompleteFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
@@ -1235,9 +1278,7 @@ class _HomePageState extends State<HomePage> {
                              MaterialPageRoute(
                                  builder: (context) => const ProfilePage()),
                            );
-                           if (mounted) {
-                             setState(() {}); 
-                           }
+                           _refreshProfile();
                          },
                          child: Padding(
                            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 5),
@@ -1641,6 +1682,27 @@ class _HomePageState extends State<HomePage> {
       
       if (result['success']) {
         final data = result['data'];
+        
+        if (mounted) {
+          final email = data['email'] ?? '';
+          final photo = data['photoURL'] ?? '';
+          final category = data['category'] ?? '';
+          final name = data['name'] ?? '';
+          
+          if (_photoUrl != photo || _initialLetter != (email.isNotEmpty ? email[0].toUpperCase() : '')) {
+            setState(() {
+              _photoUrl = photo;
+              _initialLetter = email.isNotEmpty ? email[0].toUpperCase() : '';
+            });
+            
+            SharedPreferences.getInstance().then((prefs) {
+              prefs.setString('photo_url', photo);
+              prefs.setString('email', email);
+              prefs.setString('category', category);
+              prefs.setString('name', name);
+            });
+          }
+        }
         
         // Basic Fields
         if (_isFieldEmpty(data['category'])) return false;
