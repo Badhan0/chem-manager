@@ -26,6 +26,9 @@ class _PaymentGatewaySetupPageState extends State<PaymentGatewaySetupPage> {
   // UPI Controller
   final TextEditingController _upiIdController = TextEditingController();
 
+  String? _connectedAccountId;
+  bool _razorpayEnabled = false;
+
   bool _isLoading = false;
   bool _isSaved = false;
 
@@ -53,6 +56,8 @@ class _PaymentGatewaySetupPageState extends State<PaymentGatewaySetupPage> {
             _ifscController.text = data['ifscCode'] ?? '';
             _holderNameController.text = data['accountHolderName'] ?? '';
             _upiIdController.text = data['upiId'] ?? '';
+            _connectedAccountId = data['connectedAccountId'];
+            _razorpayEnabled = data['razorpayEnabled'] ?? false;
             _isSaved = true;
           });
         }
@@ -259,6 +264,9 @@ class _PaymentGatewaySetupPageState extends State<PaymentGatewaySetupPage> {
   }
 
   Widget _buildExternalServiceNotice() {
+    final bool isRazorpay = _selectedMethod == 'Razorpay';
+    final bool isConnected = isRazorpay && _razorpayEnabled && _connectedAccountId != null;
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
@@ -269,38 +277,167 @@ class _PaymentGatewaySetupPageState extends State<PaymentGatewaySetupPage> {
       child: Column(
         children: [
           Icon(
-            _selectedMethod == 'Stripe' ? Icons.payment : Icons.account_balance_wallet,
-            color: HomePage.primaryColor,
+            isRazorpay ? Icons.account_balance_wallet : Icons.payment,
+            color: isConnected ? Colors.green : HomePage.primaryColor,
             size: 50,
           ),
           const SizedBox(height: 15),
           Text(
-            'Connect with $_selectedMethod',
+            isConnected ? 'Razorpay Connected' : 'Connect with $_selectedMethod',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: HomePage.textColor),
           ),
           const SizedBox(height: 10),
-          Text(
-            'You will be redirected to $_selectedMethod\'s secure portal to complete the onboarding process. This allows you to receive payments directly to your wallet.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: HomePage.textColor.withOpacity(0.7)),
-          ),
+          if (isConnected) ...[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.green.withOpacity(0.3)),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    'ACTIVE PAYOUTS',
+                    style: TextStyle(color: Colors.green.shade800, fontWeight: FontWeight.bold, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 15),
+            Text(
+              'Connected Account ID:\n$_connectedAccountId',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: HomePage.textColor.withOpacity(0.9),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Patient app payments will be processed through Razorpay Route and routed directly to this connected account.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 13, color: HomePage.textColor.withOpacity(0.6)),
+            ),
+          ] else ...[
+            Text(
+              isRazorpay 
+                ? 'Enter your bank details below to register your payout account. Patient payments will be routed directly to this account via Razorpay.'
+                : 'You will be redirected to $_selectedMethod\'s secure portal to complete the onboarding process. This allows you to receive payments directly to your wallet.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: HomePage.textColor.withOpacity(0.7)),
+            ),
+            if (isRazorpay) ...[
+              const SizedBox(height: 20),
+              _buildNeumorphicTextField(_holderNameController, 'Account Holder / Business Name', Icons.person),
+              const SizedBox(height: 16),
+              _buildNeumorphicTextField(_accountNumberController, 'Bank Account Number', Icons.numbers, isNumber: true),
+              const SizedBox(height: 16),
+              _buildNeumorphicTextField(_ifscController, 'IFSC Code', Icons.code),
+              const SizedBox(height: 16),
+              _buildNeumorphicTextField(_bankNameController, 'Bank Name', Icons.account_balance),
+            ],
+          ],
           const SizedBox(height: 20),
           ElevatedButton(
-            onPressed: () {
-              // Mock redirection logic
+            onPressed: isRazorpay ? _handleRazorpayConnection : () {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Redirecting to $_selectedMethod...')),
+                SnackBar(content: Text('Redirecting to $_selectedMethod onboarding...')),
               );
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: HomePage.primaryColor,
+              backgroundColor: isConnected ? Colors.red.shade700 : HomePage.primaryColor,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
             ),
-            child: Text('Connect Now', style: TextStyle(color: Colors.white)),
+            child: Text(
+              isConnected ? 'Disconnect Account' : 'Connect Now',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
           ),
         ],
       ),
     );
+  }
+
+  Future<void> _handleRazorpayConnection() async {
+    final prefs = await SharedPreferences.getInstance();
+    final userId = prefs.getString('user_id');
+    if (userId == null) return;
+
+    if (_razorpayEnabled) {
+      // Disconnect
+      setState(() => _isLoading = true);
+      try {
+        final payload = {
+          'userId': userId,
+          'method': 'None',
+        };
+        final response = await ApiService.post('/users/payment-details', payload);
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          setState(() {
+            _razorpayEnabled = false;
+            _connectedAccountId = null;
+            _selectedMethod = 'Bank Account';
+            _isSaved = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Razorpay account disconnected.')),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error disconnecting: $e')),
+        );
+      } finally {
+        setState(() => _isLoading = false);
+      }
+    } else {
+      // Connect
+      if (!_formKey.currentState!.validate()) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please complete all bank fields before connecting.')),
+        );
+        return;
+      }
+
+      setState(() => _isLoading = true);
+      try {
+        final response = await ApiService.post('/users/create-connected-account', {
+          'userId': userId,
+          'accountHolderName': _holderNameController.text,
+          'accountNumber': _accountNumberController.text,
+          'ifscCode': _ifscController.text,
+          'bankName': _bankNameController.text,
+        });
+        if (response.statusCode == 200 || response.statusCode == 201) {
+          final data = jsonDecode(response.body);
+          setState(() {
+            _connectedAccountId = data['connectedAccountId'];
+            _razorpayEnabled = true;
+            _isSaved = true;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(data['message'] ?? 'Razorpay Connected Account Created Successfully!')),
+          );
+        } else {
+          final errBody = jsonDecode(response.body);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(errBody['message'] ?? 'Failed to initiate Razorpay connection')),
+          );
+        }
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Connection Error: $e')),
+        );
+      } finally {
+        setState(() => _isLoading = false);
+      }
+    }
   }
 
   Widget _buildSaveButton() {

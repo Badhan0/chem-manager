@@ -4,8 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
   // Use 10.0.2.2 for Android Emulator, localhost for iOS simulator
-  //static const String baseUrl = 'http://192.168.0.131:5000/api';
-  static const String baseUrl = 'https://chem-manager-backend-zxlh.onrender.com/api';
+  static const String baseUrl = 'http://192.168.1.18:5000/api';
+  //static const String baseUrl = 'https://chem-manager-backend-zxlh.onrender.com/api';
 
   static Future<http.Response> post(String endpoint, Map<String, dynamic> body) async {
     final url = Uri.parse('$baseUrl$endpoint');

@@ -15,6 +15,7 @@ import 'notification_page.dart';
 import 'find_user_page.dart';
 import 'connected_user_details_page.dart';
 import 'payment_gateway_setup_page.dart';
+import 'subscription_page.dart';
 
 class NeumorphicDialog extends StatelessWidget {
   final String title;
@@ -212,6 +213,26 @@ class _HomePageState extends State<HomePage> {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
+                          builder: (context) => const SubscriptionPage()),
+                    );
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.card_membership_rounded,
+                          color: HomePage.primaryColor, size: 20),
+                      const SizedBox(width: 8),
+                      const Text('Manage subscription'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 12),
+                _buildNeumorphicButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
                           builder: (context) => const PaymentGatewaySetupPage()),
                     );
                   },
@@ -279,7 +300,7 @@ class _HomePageState extends State<HomePage> {
           ),
           actions: const [],
           maxWidth: MediaQuery.of(context).size.width * 0.9,
-          maxHeight: MediaQuery.of(context).size.height * (isOrganisation ? 0.52 : 0.44),
+          maxHeight: MediaQuery.of(context).size.height * (isOrganisation ? 0.60 : 0.44),
         ),
       );
     }
@@ -1214,6 +1235,203 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  Widget _buildSubscriptionBanner(Map<String, dynamic> userData) {
+    final status = userData['subscriptionStatus'] ?? 'trial';
+    final plan = userData['subscriptionPlan'] ?? 'trial';
+    
+    // Calculate remaining days
+    int remainingDays = 0;
+    if (status == 'trial' && userData['trialEndDate'] != null) {
+      try {
+        final trialEndDate = DateTime.parse(userData['trialEndDate'].toString());
+        final diff = trialEndDate.difference(DateTime.now());
+        remainingDays = diff.inDays;
+        if (remainingDays < 0) remainingDays = 0;
+      } catch (e) {
+        print('Error parsing trialEndDate: $e');
+      }
+    }
+    
+    String planText = plan.toString().toUpperCase();
+    String statusText = status.toString().toUpperCase();
+    
+    // Choose gradient based on plan and status
+    List<Color> gradientColors;
+    IconData iconData;
+    String description = '';
+    
+    if (status == 'expired') {
+      gradientColors = [const Color(0xFFEF4444), const Color(0xFFB91C1C)]; // Red gradient
+      iconData = Icons.warning_amber_rounded;
+      description = 'Your access has expired. Please subscribe to continue.';
+    } else if (plan == 'premium') {
+      gradientColors = [const Color(0xFF8B5CF6), const Color(0xFFEC4899)]; // Purple-pink premium gradient
+      iconData = Icons.workspace_premium_rounded;
+      description = 'Premium active. Thank you for your support!';
+    } else if (plan == 'basic') {
+      gradientColors = [const Color(0xFF2563EB), const Color(0xFF3B82F6)]; // Blue gradient
+      iconData = Icons.verified_user_rounded;
+      description = 'Basic plan active. Managing connections enabled.';
+    } else {
+      // Trial
+      gradientColors = [const Color(0xFF0F172A), const Color(0xFF1E293B)]; // Sleek dark slate gradient
+      iconData = Icons.hourglass_top_rounded;
+      description = '$remainingDays days left in your free trial.';
+    }
+    
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(20),
+        gradient: LinearGradient(
+          colors: gradientColors,
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: gradientColors[0].withOpacity(0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+          BoxShadow(
+            color: Colors.white.withOpacity(0.1),
+            blurRadius: 4,
+            offset: const Offset(-2, -2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(20),
+        child: Stack(
+          children: [
+            // Decorative background patterns
+            Positioned(
+              right: -30,
+              top: -30,
+              child: Container(
+                width: 120,
+                height: 120,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.08),
+                ),
+              ),
+            ),
+            Positioned(
+              left: -20,
+              bottom: -20,
+              child: Container(
+                width: 80,
+                height: 80,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withOpacity(0.05),
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      iconData,
+                      color: Colors.white,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              planText == 'TRIAL' ? 'FREE TRIAL' : '$planText PLAN',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w800,
+                                fontSize: 16,
+                                letterSpacing: 1.1,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: status == 'expired' 
+                                  ? Colors.black.withOpacity(0.3)
+                                  : Colors.white.withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                statusText,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          description,
+                          style: TextStyle(
+                            color: Colors.white.withOpacity(0.85),
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    onPressed: () async {
+                      final result = await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SubscriptionPage(),
+                        ),
+                      );
+                      if (result == true || result == null) {
+                        _refreshProfile();
+                      }
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: gradientColors[0],
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      elevation: 2,
+                    ),
+                    child: const Text(
+                      'Manage',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     User? user = FirebaseAuth.instance.currentUser;
@@ -1427,55 +1645,59 @@ class _HomePageState extends State<HomePage> {
                     return Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildNeumorphicContainer(
-                          Padding(
-                            padding: const EdgeInsets.all(16.0),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  flex: 3, // Give more space to the name
-                                  child: Text(
-                                    category == 'Doctor'
-                                        ? 'Dr. $name'
-                                        : 'Org. $name',
-                                    style: TextStyle(
-                                      color: HomePage.textColor,
-                                      fontSize: 20,
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 8.0),
+                          child: _buildNeumorphicContainer(
+                            Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    flex: 3, // Give more space to the name
+                                    child: Text(
+                                      category == 'Doctor'
+                                          ? 'Dr. $name'
+                                          : 'Org. $name',
+                                      style: TextStyle(
+                                        color: HomePage.textColor,
+                                        fontSize: 20,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
                                     ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
                                   ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  flex: 2, // Less space for the find section
-                                  child: Column(
-                                    children: [
-                                      Text(
-                                        category == 'Doctor'
-                                            ? 'Find Organisation:'
-                                            : 'Find Doctor:',
-                                        style: TextStyle(
-                                          color: HomePage.textColor
-                                              .withOpacity(0.8),
-                                          fontSize: 14,
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    flex: 2, // Less space for the find section
+                                    child: Column(
+                                      children: [
+                                        Text(
+                                          category == 'Doctor'
+                                              ? 'Find Organisation:'
+                                              : 'Find Doctor:',
+                                          style: TextStyle(
+                                            color: HomePage.textColor
+                                                .withOpacity(0.8),
+                                            fontSize: 14,
+                                          ),
+                                          overflow: TextOverflow.ellipsis,
+                                          maxLines: 1,
                                         ),
-                                        overflow: TextOverflow.ellipsis,
-                                        maxLines: 1,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      _buildNeumorphicButton(
-                                        onPressed: () =>
-                                            _showFindUserDialog(context),
-                                        child: const Text('Find'),
-                                      ),
-                                    ],
+                                        const SizedBox(height: 8),
+                                        _buildNeumorphicButton(
+                                          onPressed: () =>
+                                              _showFindUserDialog(context),
+                                          child: const Text('Find'),
+                                        ),
+                                      ],
+                                    ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
+                        _buildSubscriptionBanner(userData),
                         const SizedBox(height: 10),
                         Expanded(
                           child: Padding(

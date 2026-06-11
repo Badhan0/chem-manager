@@ -11,6 +11,7 @@ import 'home_page.dart';
 import 'dart:math';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:chem_manager/services/location_service.dart';
+import 'subscription_page.dart';
 import 'package:geolocator/geolocator.dart';
 
 class ProfilePage extends StatefulWidget {
@@ -1135,6 +1136,26 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   ),
                 if (_profileCompleted) ...[
+                  const SizedBox(height: 20),
+                  _buildNeumorphicContainer(
+                    TextButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const SubscriptionPage(),
+                          ),
+                        );
+                      },
+                      child: Text(
+                        'Manage Subscription & Billing',
+                        style: TextStyle(
+                          color: _primaryColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
                   const SizedBox(height: 20),
                   _buildNeumorphicContainer(
                     TextButton(
